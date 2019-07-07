@@ -1,0 +1,145 @@
+---
+title: "Pratical Machine Learning Course_Project"
+author: "Six_Paths"
+date: "02 Juillet 2019"
+output:
+  html_document: default
+  word_document: default
+---
+
+## Pratical Machine Learning ####
+
+#### Summary :
+
+
+This project is based on personal activicty data collected relatively inexpensively using quantified self movement's devices such as Jawbone Up, Nike FuelBand, and Fitbit.
+Performing barbell lifts correctly and incorrectly in 5 different ways, we want to focus on how well this activity is done and not to quantify it.
+
+Using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants, the objective is to predict the manner in which they did the exercise. 
+With relevant variable, this report describe how the model is built through the different modeling choices. Final model is also used to predict 20 different test cases.
+
+
+```{r echo=TRUE}
+  ## Set working directory
+  remove(list=ls())
+  setwd("C:/Users/686004/Desktop/Six_Paths/D_S/08 - Pratical Machine Learning")
+  set.seed(325)
+  library(data.table)
+  library(caret)
+  library(caret)
+  suppressMessages(library(rattle))
+  library(rpart.plot)
+```
+
+## Load and clearing data
+
+### Load  data
+
+```{r echo=TRUE}
+  train_data <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+  test_data <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+  str(train_data)  
+```
+
+The train database contains 19622 observations of 160 variables. As can be seen, several variables have missing''NA'' and/or empty values. 
+These data will then be processed in order to have a complete database for modelling. All variables with more than  of NA and/or missing data will be deleted
+
+### Data clearing
+```{r echo=TRUE}
+  # Data Clearing
+    # Delete inconsistent data
+    delete_index <- which((colSums(is.na(train_data) | train_data==''))/(nrow(train_data)) > 0.5)
+    train_data <- train_data [, -delete_index]
+    test_data <- test_data [, -delete_index]
+    print(dim(train_data))
+    print ("Final data have 60 variable (after 100 columns deleted)")
+    # Split original train_data in train and test
+    inTrain = createDataPartition(train_data$classe, p = 0.8, list=FALSE)
+    training = train_data[ inTrain, -1]
+    testing = train_data[-inTrain, -1]
+    
+```
+
+
+## Modelling
+
+### Decision tree
+```{r echo=TRUE}
+   # Set model control params
+    fit_control <- trainControl(method = "cv", number = 5)
+```
+All model will be performed with cross validation with 5 fold.
+
+
+```{r echo=TRUE}
+  ## Decision tree
+    dt_model <- caret::train(classe~ ., data = training, method="rpart",
+                             trControl = fit_control)
+    print(dt_model)
+```
+Accuracy of the different fold on this decision tree model is very low, the maximum being below 55%.
+
+```{r echo=TRUE}
+  fancyRpartPlot(dt_model$finalModel)
+```
+
+
+```{r echo=TRUE}
+  dt_pred <- predict(dt_model, testing[ , !(names(testing) %in% 'classe')])
+  confusionMatrix(dt_pred, testing$classe)#$overall['Accuracy']
+```
+
+With an accuracy of 48.84% on a validation set, the decision tree does not seem to be suitable for this dataset. This model have a too large out of sample error (51.16%). The out of sample is a measure of how accurately an algorithm is able to predict outcome values for previously unseen data
+
+
+### Radom forest
+
+```{r echo=TRUE}
+    rf_model <- caret::train(classe~ ., data = training, method="rf",
+                            trControl = fit_control)
+    print(rf_model)
+```
+
+Best accurate performnace 99.92% is reached with mtr = 41 (mtr : Number of variables available for splitting at each tree node).
+
+```{r echo=TRUE}
+    rf_pred <- predict(rf_model, testing[ , !(names(testing) %in% 'classe')])
+    confusionMatrix(rf_pred, testing$classe)#$overall['Accuracy']
+```
+
+With 99.97% accuracy on validation set and 0.03% for out of sample error, random forest has better perofrmance than decision tree. 
+
+### Gradient boosting
+
+```{r echo=TRUE}
+   gb_model <- caret::train(classe~ ., data = training, method="gbm",
+                             verbose = FALSE)
+    print(gb_model)
+```
+
+We have another accurate model around 99.60% with optimal parameters (n.trees = 150, 
+interaction.depth = 3, shrinkage = 0.1 and n.minobsinnode = 10).
+
+
+```{r echo=TRUE}
+    gb_pred <- predict(gb_model, testing[ , !(names(testing) %in% 'classe')])
+    confusionMatrix(gb_pred, testing$classe)#$overall['Accuracy']
+```
+Accuray on validation set is around 99.80% with gradient boosting. This is slightly lower than the performance of random forest and out of sample error is also greater (0.20%).
+
+
+### Prediction with final chosen model
+
+The random forest offering a better performance will be chosen as the final model and will be used to predict cases.
+
+```{r echo=TRUE}
+    final_model <- rf_model
+    rf_pred_case <- predict(final_model, test_data[ , !(names(test_data) %in% 'classe')][, -1])
+    rf_pred_case
+```
+
+```{r echo=TRUE}
+    ## Save prediction
+    df_case_predict <- do.call(rbind, Map(data.frame, Case=test_data$X, predict=rf_pred_case))
+    write.csv(df_case_predict, "Predictions_save.csv", row.names=FALSE)
+```
